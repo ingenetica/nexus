@@ -92,20 +92,20 @@ function createWindow(): void {
 app.whenReady().then(() => {
   logger.info('system', `Nexus starting (PID ${process.pid})`)
 
-  // Security: Content-Security-Policy
-  // In dev mode, Vite HMR needs 'unsafe-eval' for script-src and ws: for connect-src
-  const cspPolicy = isDev
-    ? "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' ws://localhost:* http://localhost:*; font-src 'self'"
-    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; font-src 'self'"
-
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [cspPolicy],
-      },
+  // Security: Content-Security-Policy (production only)
+  // In dev, Vite serves from localhost and CSP 'self' blocks it. Skip CSP in dev.
+  if (!isDev) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; font-src 'self'",
+          ],
+        },
+      })
     })
-  })
+  }
 
   // Security: deny all permission requests (geolocation, notifications, etc.)
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {

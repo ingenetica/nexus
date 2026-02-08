@@ -63,10 +63,12 @@ export class LinkedInClient extends SocialPlatform {
       },
     })
 
-    // Restrict navigation to LinkedIn domains only
+    // Restrict navigation to LinkedIn domains and our exact OAuth callback
     authWindow.webContents.on('will-navigate', (event, url) => {
       const parsed = new URL(url)
-      if (!parsed.hostname.endsWith('linkedin.com') && !parsed.hostname.startsWith('localhost')) {
+      const isLinkedIn = parsed.hostname.endsWith('linkedin.com')
+      const isCallback = parsed.hostname === 'localhost' && parsed.port === String(CALLBACK_PORT)
+      if (!isLinkedIn && !isCallback) {
         event.preventDefault()
       }
     })
@@ -226,11 +228,21 @@ export class LinkedInClient extends SocialPlatform {
 
   private getAccessToken(): string | null {
     const db = getDb()
-    const account = db.prepare('SELECT access_token_encrypted FROM social_accounts WHERE platform = ? LIMIT 1').get('linkedin') as {
+    const account = db.prepare('SELECT access_token_encrypted, token_expires_at FROM social_accounts WHERE platform = ? LIMIT 1').get('linkedin') as {
       access_token_encrypted: string
+      token_expires_at: string | null
     } | undefined
 
     if (!account) return null
+
+    // Check token expiry
+    if (account.token_expires_at) {
+      const expiresAt = new Date(account.token_expires_at).getTime()
+      if (Date.now() > expiresAt) {
+        logger.warn('ipc', 'LinkedIn access token has expired. Please reconnect.')
+        return null
+      }
+    }
 
     if (!safeStorage.isEncryptionAvailable()) {
       logger.error('ipc', 'Cannot decrypt LinkedIn token: system encryption unavailable')

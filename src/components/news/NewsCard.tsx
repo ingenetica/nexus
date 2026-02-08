@@ -11,6 +11,16 @@ interface NewsCardProps {
   onToggleSaved?: (article: Article) => void
 }
 
+function isSafeImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 export const NewsCard: React.FC<NewsCardProps> = ({ article, generating, onCreatePost, onToggleSaved }) => {
   const scoreVariant = article.relevance_score >= 0.7 ? 'success' :
     article.relevance_score >= 0.4 ? 'warning' : 'default'
@@ -28,9 +38,9 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, generating, onCreat
             {article.summary}
           </p>
         </div>
-        {article.image_url && (
+        {isSafeImageUrl(article.image_url) && (
           <img
-            src={article.image_url}
+            src={article.image_url!}
             alt=""
             className="w-20 h-20 rounded-lg object-cover flex-shrink-0 border border-nexus-border"
           />

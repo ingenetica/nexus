@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid'
 import { spawn } from 'child_process'
 import { getDb } from '../database/index'
 import { DEFAULT_LLM_CONFIG } from './settings-handlers'
-import { scrapeSourceById } from '../services/news-scraper'
+import { scrapeSourceById, validateSourceUrl } from '../services/news-scraper'
 import { logger } from '../services/logger'
 import { getClaudePath, getClaudeEnv } from '../services/claude-cli'
 
@@ -24,6 +24,7 @@ export function registerNewsHandlers(): void {
 
   ipcMain.handle('news:addSource', (_event, source: { name: string; url: string; type: string; enabled: boolean }) => {
     try {
+      validateSourceUrl(source.url)
       const db = getDb()
       const id = uuid()
       db.prepare('INSERT INTO sources (id, name, url, type, enabled) VALUES (?, ?, ?, ?, ?)').run(

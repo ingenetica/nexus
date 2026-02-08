@@ -14,8 +14,15 @@ export const DEFAULT_LLM_CONFIG = {
 }
 
 export function registerSettingsHandlers(): void {
+  // Allowlist of keys readable via the generic getter.
+  // Sensitive keys (linkedin_config) have dedicated encrypted handlers.
+  const ALLOWED_READ_KEYS = ['llm_config', 'theme', 'notifications', 'scheduler_interval']
+
   ipcMain.handle('settings:get', (_event, key: string) => {
     try {
+      if (!ALLOWED_READ_KEYS.includes(key)) {
+        return { success: false, error: `Setting key "${key}" is not allowed via generic getter` }
+      }
       const db = getDb()
       const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
       return { success: true, data: row?.value || null }

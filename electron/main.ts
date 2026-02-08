@@ -1,10 +1,52 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import path from 'path'
+import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 import { initDatabase, closeDatabase, getDb } from './database/index'
 import { registerAllHandlers } from './ipc/handlers'
 import { startScheduler, stopScheduler } from './services/scheduler'
 import { logger, closeLogger } from './services/logger'
+
+// --- Hot-reload cleanup: kill previous Electron process on dev restart ---
+const pidFile = path.join(app.getPath('userData'), 'nexus-dev.pid')
+
+function killPreviousInstance(): void {
+  try {
+    const oldPid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10)
+    if (oldPid && oldPid !== process.pid) {
+      // Verify the process is still alive before sending signal
+      try {
+        process.kill(oldPid, 0) // signal 0 = existence check only
+        process.kill(oldPid, 'SIGTERM')
+      } catch {
+        // Process doesn't exist or we lack permission — safe to ignore
+      }
+    }
+  } catch {
+    // No PID file or parse error — fine
+  }
+}
+
+function writePidFile(): void {
+  try {
+    fs.writeFileSync(pidFile, String(process.pid))
+  } catch {
+    // Non-critical
+  }
+}
+
+function removePidFile(): void {
+  try {
+    fs.unlinkSync(pidFile)
+  } catch {
+    // Already gone
+  }
+}
+
+if (process.env.VITE_DEV_SERVER_URL) {
+  killPreviousInstance()
+  writePidFile()
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -23,6 +65,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
     },
   })
 
@@ -36,6 +79,17 @@ function createWindow(): void {
     }
   })
   ipcMain.on('window:close', () => mainWindow?.close())
+
+  // Restrict navigation to app origin only
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devUrl = process.env.VITE_DEV_SERVER_URL
+    if (devUrl && url.startsWith(devUrl)) return
+    if (url.startsWith('file://')) return
+    event.preventDefault()
+  })
+
+  // Block popup windows from main window
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // Load the app
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -52,6 +106,23 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   logger.info('system', 'Nexus starting up')
+
+  // Security: set Content-Security-Policy
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' ws://localhost:*; font-src 'self'",
+        ],
+      },
+    })
+  })
+
+  // Security: deny all permission requests (geolocation, notifications, etc.)
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false)
+  })
 
   // Initialize database
   initDatabase()
@@ -79,9 +150,14 @@ app.on('window-all-closed', () => {
   stopScheduler()
   closeDatabase()
   closeLogger()
+  removePidFile()
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  removePidFile()
 })
 
 function seedDefaultSources(): void {

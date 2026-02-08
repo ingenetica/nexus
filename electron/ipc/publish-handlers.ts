@@ -48,12 +48,19 @@ export function registerPublishHandlers(): void {
   ipcMain.handle('publish:updatePost', (_event, id: string, updates: Record<string, unknown>) => {
     try {
       const db = getDb()
+      // Use a safe mapping — column names are never derived from user input
+      const SAFE_COLUMNS: Record<string, string> = {
+        content: 'content', hashtags: 'hashtags', status: 'status',
+        scheduled_at: 'scheduled_at', published_at: 'published_at',
+        external_id: 'external_id', error: 'error',
+      }
       const fields: string[] = []
       const values: unknown[] = []
 
       for (const [key, val] of Object.entries(updates)) {
-        if (['content', 'hashtags', 'status', 'scheduled_at', 'published_at', 'external_id', 'error'].includes(key)) {
-          fields.push(`${key} = ?`)
+        const col = SAFE_COLUMNS[key]
+        if (col) {
+          fields.push(`${col} = ?`)
           values.push(val)
         }
       }

@@ -25,7 +25,7 @@ export interface Article {
 
 // ─── Posts ───
 export type PostStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
-export type SocialPlatform = 'linkedin'
+export type SocialPlatform = 'linkedin' | 'instagram' | 'facebook'
 
 export interface Post {
   id: string
@@ -96,6 +96,19 @@ export interface AgentState {
   totalCost: number
 }
 
+// ─── Personalities ───
+export interface Personality {
+  id: string
+  name: string
+  system_prompt: string
+  tone: string
+  style: string
+  language: string
+  length: string
+  is_default: boolean
+  created_at: string
+}
+
 // ─── Settings ───
 export interface LLMConfig {
   model: string
@@ -117,7 +130,7 @@ export interface IpcResult<T = unknown> {
 }
 
 // ─── Tabs ───
-export type TabId = 'news' | 'llm-config' | 'publish' | 'interactions' | 'agents' | 'debug-log'
+export type TabId = 'news' | 'llm-config' | 'accounts' | 'publish' | 'interactions' | 'agents' | 'debug-log'
 
 // ─── Debug Log ───
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug'

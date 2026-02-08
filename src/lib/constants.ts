@@ -3,6 +3,7 @@ import { TabId } from './types'
 export const TABS: { id: TabId; label: string }[] = [
   { id: 'news', label: 'News Discovery' },
   { id: 'llm-config', label: 'LLM Config' },
+  { id: 'accounts', label: 'Accounts' },
   { id: 'publish', label: 'Publishing' },
   { id: 'interactions', label: 'Interactions' },
   { id: 'agents', label: 'Agent Dashboard' },

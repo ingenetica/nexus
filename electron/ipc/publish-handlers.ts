@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { getDb } from '../database/index'
 import { getLinkedInClient } from '../services/linkedin'
+import { getInstagramClient } from '../services/instagram'
+import { getFacebookClient } from '../services/facebook'
 
 export function registerPublishHandlers(): void {
   ipcMain.handle('publish:getPosts', (_event, status?: string) => {
@@ -91,7 +93,7 @@ export function registerPublishHandlers(): void {
     try {
       const db = getDb()
       const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(id) as {
-        id: string; content: string; hashtags: string; platform: string
+        id: string; content: string; hashtags: string; platform: string; article_id: string | null
       } | undefined
 
       if (!post) return { success: false, error: 'Post not found' }
@@ -102,8 +104,28 @@ export function registerPublishHandlers(): void {
         ? `${post.content}\n\n${post.hashtags}`
         : post.content
 
-      const client = getLinkedInClient()
-      const result = await client.publish(fullContent)
+      // Get article image for Instagram
+      let imageUrl: string | undefined
+      if (post.article_id) {
+        const article = db.prepare('SELECT image_url FROM articles WHERE id = ?').get(post.article_id) as { image_url?: string } | undefined
+        if (article?.image_url) imageUrl = article.image_url
+      }
+
+      // Route to correct platform client
+      const clientMap: Record<string, () => import('../services/social-base').SocialPlatform> = {
+        linkedin: () => getLinkedInClient(),
+        instagram: () => getInstagramClient(),
+        facebook: () => getFacebookClient(),
+      }
+
+      const getClient = clientMap[post.platform]
+      if (!getClient) {
+        db.prepare('UPDATE posts SET status = ?, error = ? WHERE id = ?').run('failed', `Unknown platform: ${post.platform}`, id)
+        return { success: false, error: `Unknown platform: ${post.platform}` }
+      }
+
+      const client = getClient()
+      const result = await client.publish(fullContent, { imageUrl })
 
       if (result.success) {
         db.prepare('UPDATE posts SET status = ?, published_at = datetime(?), external_id = ? WHERE id = ?')
@@ -148,6 +170,30 @@ export function registerPublishHandlers(): void {
       await client.connect()
       const db = getDb()
       const account = db.prepare('SELECT id, platform, name, profile_url, token_expires_at, created_at FROM social_accounts WHERE platform = ? ORDER BY created_at DESC LIMIT 1').get('linkedin')
+      return { success: true, data: account }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('publish:connectInstagram', async () => {
+    try {
+      const client = getInstagramClient()
+      await client.connect()
+      const db = getDb()
+      const account = db.prepare('SELECT id, platform, name, profile_url, token_expires_at, created_at FROM social_accounts WHERE platform = ? ORDER BY created_at DESC LIMIT 1').get('instagram')
+      return { success: true, data: account }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('publish:connectFacebook', async () => {
+    try {
+      const client = getFacebookClient()
+      await client.connect()
+      const db = getDb()
+      const account = db.prepare('SELECT id, platform, name, profile_url, token_expires_at, created_at FROM social_accounts WHERE platform = ? ORDER BY created_at DESC LIMIT 1').get('facebook')
       return { success: true, data: account }
     } catch (err) {
       return { success: false, error: String(err) }

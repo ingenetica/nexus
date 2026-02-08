@@ -53,9 +53,16 @@ export const ClaudeIcon: React.FC<IconProps> = ({ className, size = defaults.siz
   </svg>
 )
 
+export const LinkIcon: React.FC<IconProps> = ({ className, size = defaults.size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M15 7h3a5 5 0 0 1 0 10h-3m-6 0H6a5 5 0 0 1 0-10h3" /><line x1="8" y1="12" x2="16" y2="12" />
+  </svg>
+)
+
 export const SIDEBAR_ICONS: Record<string, React.FC<IconProps>> = {
   'news': SignalIcon,
   'llm-config': GearIcon,
+  'accounts': LinkIcon,
   'publish': SendIcon,
   'interactions': ChatIcon,
   'agents': CpuIcon,

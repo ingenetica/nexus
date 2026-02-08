@@ -4,7 +4,7 @@ import { URL } from 'url'
 import { v4 as uuid } from 'uuid'
 import { getDb } from '../database/index'
 import { logger } from './logger'
-import { SocialPlatform, PublishResult, SocialComment } from './social-base'
+import { SocialPlatform, PublishResult, PublishOptions, SocialComment } from './social-base'
 
 const CALLBACK_PORT = 19847
 const CALLBACK_PATH = '/callback'
@@ -140,7 +140,7 @@ export class LinkedInClient extends SocialPlatform {
     db.prepare('DELETE FROM social_accounts WHERE platform = ?').run('linkedin')
   }
 
-  async publish(content: string): Promise<PublishResult> {
+  async publish(content: string, _options?: PublishOptions): Promise<PublishResult> {
     const token = this.getAccessToken()
     if (!token) return { success: false, error: 'Not connected to LinkedIn' }
 

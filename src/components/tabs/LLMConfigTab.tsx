@@ -1,27 +1,52 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { usePersonalityStore } from '../../stores/personalityStore'
+import { PersonalityEditor } from '../settings/PersonalityEditor'
 import { Button } from '../ui/Button'
 import { Card, CardHeader, CardTitle } from '../ui/Card'
-import { Input, TextArea, Select } from '../ui/Input'
+import { TextArea, Select } from '../ui/Input'
 import { Badge } from '../ui/Badge'
+import { Modal } from '../ui/Modal'
+import { Personality, SocialPlatform } from '../../lib/types'
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: 'EN', es: 'ES', fr: 'FR', de: 'DE', pt: 'PT',
+}
 
 export const LLMConfigTab: React.FC = () => {
   const {
     llmConfig, dirty, loadLLMConfig, setLLMConfig, saveLLMConfig,
-    linkedInConfig, linkedInDirty, loadLinkedInConfig, setLinkedInConfig, saveLinkedInConfig,
   } = useSettingsStore()
+
+  const {
+    personalities, platformAssignments, loading: personalitiesLoading,
+    loadPersonalities, createPersonality, updatePersonality, deletePersonality,
+    setDefaultPersonality, assignPlatform, loadPlatformAssignments,
+  } = usePersonalityStore()
+
+  const [editingPersonality, setEditingPersonality] = useState<Personality | null>(null)
+  const [showNewPersonality, setShowNewPersonality] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     loadLLMConfig()
-    loadLinkedInConfig()
+    loadPersonalities()
+    loadPlatformAssignments()
   }, [])
+
+  const allPlatforms: SocialPlatform[] = ['linkedin', 'instagram', 'facebook']
+
+  const handleDeletePersonality = async (id: string) => {
+    const err = await deletePersonality(id)
+    if (err) setDeleteError(err)
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-nexus-text-primary">LLM Configuration</h1>
-          <p className="text-sm text-nexus-text-secondary mt-1">Configure AI agents and content generation parameters</p>
+          <p className="text-sm text-nexus-text-secondary mt-1">Configure AI agents, personalities, and content generation parameters</p>
         </div>
         <div className="flex items-center gap-2">
           {dirty && <Badge variant="warning">Unsaved changes</Badge>}
@@ -44,51 +69,6 @@ export const LLMConfigTab: React.FC = () => {
                   { value: 'haiku', label: 'Claude Haiku (Fast)' },
                   { value: 'sonnet', label: 'Claude Sonnet (Balanced)' },
                   { value: 'opus', label: 'Claude Opus (Powerful)' },
-                ]}
-              />
-              <Select
-                label="Tone"
-                value={llmConfig.tone}
-                onChange={e => setLLMConfig({ tone: e.target.value })}
-                options={[
-                  { value: 'professional', label: 'Professional' },
-                  { value: 'casual', label: 'Casual' },
-                  { value: 'technical', label: 'Technical' },
-                  { value: 'enthusiastic', label: 'Enthusiastic' },
-                  { value: 'thought-leader', label: 'Thought Leader' },
-                ]}
-              />
-              <Select
-                label="Length"
-                value={llmConfig.length}
-                onChange={e => setLLMConfig({ length: e.target.value })}
-                options={[
-                  { value: 'short', label: 'Short (< 500 chars)' },
-                  { value: 'medium', label: 'Medium (500-1500 chars)' },
-                  { value: 'long', label: 'Long (1500-3000 chars)' },
-                ]}
-              />
-              <Select
-                label="Style"
-                value={llmConfig.style}
-                onChange={e => setLLMConfig({ style: e.target.value })}
-                options={[
-                  { value: 'informative', label: 'Informative' },
-                  { value: 'opinion', label: 'Opinion/Commentary' },
-                  { value: 'question', label: 'Question/Discussion' },
-                  { value: 'listicle', label: 'Listicle/Tips' },
-                ]}
-              />
-              <Select
-                label="Language"
-                value={llmConfig.language}
-                onChange={e => setLLMConfig({ language: e.target.value })}
-                options={[
-                  { value: 'en', label: 'English' },
-                  { value: 'es', label: 'Spanish' },
-                  { value: 'fr', label: 'French' },
-                  { value: 'de', label: 'German' },
-                  { value: 'pt', label: 'Portuguese' },
                 ]}
               />
               <div>
@@ -120,20 +100,89 @@ export const LLMConfigTab: React.FC = () => {
               </div>
             </div>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between w-full">
+                <CardTitle>Personalities</CardTitle>
+                <Button size="sm" onClick={() => setShowNewPersonality(true)}>+ New</Button>
+              </div>
+            </CardHeader>
+            <div className="space-y-2">
+              {personalities.map(p => (
+                <div key={p.id} className="flex items-center justify-between p-3 bg-nexus-bg rounded-lg border border-nexus-border">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-nexus-text-primary truncate">{p.name}</span>
+                      {p.is_default && <Badge variant="info">default</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-nexus-text-secondary capitalize">{p.tone}</span>
+                      <span className="text-[10px] text-nexus-text-secondary">{LANGUAGE_LABELS[p.language] || p.language}</span>
+                      <span className="text-[10px] text-nexus-text-secondary capitalize">{p.style}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {!p.is_default && (
+                      <Button size="sm" variant="ghost" onClick={() => setDefaultPersonality(p.id)}>
+                        Set Default
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setEditingPersonality(p)}>Edit</Button>
+                    {!p.is_default && (
+                      <Button size="sm" variant="danger" onClick={() => handleDeletePersonality(p.id)}>Delete</Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {personalities.length === 0 && (
+                <p className="text-xs text-nexus-text-secondary text-center py-4">No personalities yet</p>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Platform Assignments</CardTitle>
+            </CardHeader>
+            <p className="text-xs text-nexus-text-secondary mb-3">
+              Assign a personality to each platform. Posts will be generated using the assigned personality's tone, style, and language.
+            </p>
+            <div className="space-y-3">
+              {allPlatforms.map(platform => (
+                <div key={platform} className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-nexus-text-primary capitalize w-20">{platform}</span>
+                  <select
+                    value={platformAssignments[platform] || ''}
+                    onChange={e => assignPlatform(platform, e.target.value)}
+                    className="flex-1 bg-nexus-bg border border-nexus-border rounded-lg px-3 py-1.5 text-xs text-nexus-text-primary focus:outline-none focus:border-nexus-primary"
+                  >
+                    <option value="">Use default personality</option>
+                    {personalities.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}{p.is_default ? ' (default)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
 
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>System Prompt</CardTitle>
+              <CardTitle>System Prompt (Global Fallback)</CardTitle>
             </CardHeader>
             <TextArea
               value={llmConfig.systemPrompt}
               onChange={e => setLLMConfig({ systemPrompt: e.target.value })}
-              rows={10}
+              rows={8}
               className="font-mono text-xs"
               placeholder="System prompt for the content creation agent..."
             />
+            <p className="mt-2 text-[10px] text-nexus-text-secondary">
+              Used when no personality is assigned. Personalities override this prompt.
+            </p>
           </Card>
           <Card>
             <CardHeader>
@@ -150,52 +199,38 @@ export const LLMConfigTab: React.FC = () => {
               Available variables: {'{{summary}}'}, {'{{title}}'}, {'{{url}}'}, {'{{hashtags}}'}, {'{{source}}'}
             </div>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Preview</CardTitle>
-            </CardHeader>
-            <div className="bg-nexus-bg rounded-lg p-3 border border-nexus-border">
-              <p className="text-sm text-nexus-text-primary whitespace-pre-wrap">
-                {llmConfig.postTemplate
-                  .replace('{{summary}}', 'AI continues to transform how we work. New breakthroughs in reasoning models suggest that AI agents will become commonplace in software development by 2026.')
-                  .replace('{{title}}', 'The Future of AI Agents')
-                  .replace('{{url}}', 'https://example.com/article')
-                  .replace('{{hashtags}}', '#AI #Technology #Innovation #FutureOfWork #Agents')
-                  .replace('{{source}}', 'TechCrunch')}
-              </p>
-            </div>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>LinkedIn Credentials</CardTitle>
-            </CardHeader>
-            <div className="space-y-4">
-              <p className="text-xs text-nexus-text-secondary">
-                Configure your LinkedIn OAuth app credentials. Create an app at the LinkedIn Developer Portal.
-              </p>
-              <Input
-                label="Client ID"
-                value={linkedInConfig.clientId}
-                onChange={e => setLinkedInConfig({ clientId: e.target.value })}
-                placeholder="Enter LinkedIn Client ID"
-              />
-              <Input
-                label="Client Secret"
-                type="password"
-                value={linkedInConfig.clientSecret}
-                onChange={e => setLinkedInConfig({ clientSecret: e.target.value })}
-                placeholder="Enter LinkedIn Client Secret"
-              />
-              <div className="flex items-center gap-2">
-                {linkedInDirty && <Badge variant="warning">Unsaved</Badge>}
-                <Button size="sm" onClick={saveLinkedInConfig} disabled={!linkedInDirty}>
-                  Save Credentials
-                </Button>
-              </div>
-            </div>
-          </Card>
         </div>
       </div>
+
+      <Modal open={showNewPersonality} onClose={() => setShowNewPersonality(false)} title="New Personality">
+        <PersonalityEditor
+          onSave={async (data) => {
+            await createPersonality(data)
+            setShowNewPersonality(false)
+          }}
+          onCancel={() => setShowNewPersonality(false)}
+        />
+      </Modal>
+
+      <Modal open={!!editingPersonality} onClose={() => setEditingPersonality(null)} title="Edit Personality">
+        {editingPersonality && (
+          <PersonalityEditor
+            personality={editingPersonality}
+            onSave={async (data) => {
+              await updatePersonality(editingPersonality.id, data)
+              setEditingPersonality(null)
+            }}
+            onCancel={() => setEditingPersonality(null)}
+          />
+        )}
+      </Modal>
+
+      <Modal open={!!deleteError} onClose={() => setDeleteError(null)} title="Cannot Delete">
+        <div className="space-y-4">
+          <p className="text-sm text-red-400">{deleteError}</p>
+          <Button size="sm" onClick={() => setDeleteError(null)}>Got it</Button>
+        </div>
+      </Modal>
     </div>
   )
 }

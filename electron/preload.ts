@@ -10,7 +10,7 @@ const api = {
   getArticles: (filters?: Record<string, unknown>) => ipcRenderer.invoke('news:getArticles', filters),
   scrapeSource: (sourceId: string) => ipcRenderer.invoke('news:scrapeSource', sourceId),
   toggleSaved: (id: string) => ipcRenderer.invoke('news:toggleSaved', id),
-  generatePost: (articleId: string) => ipcRenderer.invoke('news:generatePost', articleId),
+  generatePost: (articleId: string, platform?: string) => ipcRenderer.invoke('news:generatePost', articleId, platform),
 
   // Posts
   getPosts: (status?: string) => ipcRenderer.invoke('publish:getPosts', status),
@@ -23,6 +23,8 @@ const api = {
   // Social Accounts
   getAccounts: () => ipcRenderer.invoke('publish:getAccounts'),
   connectLinkedIn: () => ipcRenderer.invoke('publish:connectLinkedIn'),
+  connectInstagram: () => ipcRenderer.invoke('publish:connectInstagram'),
+  connectFacebook: () => ipcRenderer.invoke('publish:connectFacebook'),
   disconnectAccount: (id: string) => ipcRenderer.invoke('publish:disconnectAccount', id),
 
   // Interactions
@@ -45,6 +47,18 @@ const api = {
   setLLMConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('settings:setLLMConfig', config),
   getLinkedInConfig: () => ipcRenderer.invoke('settings:getLinkedInConfig'),
   setLinkedInConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('settings:setLinkedInConfig', config),
+  getFacebookConfig: () => ipcRenderer.invoke('settings:getFacebookConfig'),
+  setFacebookConfig: (config: Record<string, unknown>) => ipcRenderer.invoke('settings:setFacebookConfig', config),
+
+  // Personalities
+  listPersonalities: () => ipcRenderer.invoke('personalities:list'),
+  getPersonality: (id: string) => ipcRenderer.invoke('personalities:get', id),
+  createPersonality: (data: Record<string, unknown>) => ipcRenderer.invoke('personalities:create', data),
+  updatePersonality: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('personalities:update', id, data),
+  deletePersonality: (id: string) => ipcRenderer.invoke('personalities:delete', id),
+  setDefaultPersonality: (id: string) => ipcRenderer.invoke('personalities:setDefault', id),
+  assignPlatformPersonality: (platform: string, personalityId: string) => ipcRenderer.invoke('personalities:assignPlatform', platform, personalityId),
+  getPlatformAssignments: () => ipcRenderer.invoke('personalities:getPlatformAssignments'),
 
   // Debug Log
   onLogEntry: (callback: (entry: unknown) => void) => {

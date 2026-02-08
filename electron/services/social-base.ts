@@ -12,12 +12,16 @@ export interface SocialComment {
   createdAt: string
 }
 
+export interface PublishOptions {
+  imageUrl?: string
+}
+
 export abstract class SocialPlatform {
   abstract get name(): string
   abstract isConnected(): boolean
   abstract connect(): Promise<void>
   abstract disconnect(): Promise<void>
-  abstract publish(content: string): Promise<PublishResult>
+  abstract publish(content: string, options?: PublishOptions): Promise<PublishResult>
   abstract getComments(postExternalId: string): Promise<SocialComment[]>
   abstract replyToComment(commentId: string, text: string): Promise<PublishResult>
 }

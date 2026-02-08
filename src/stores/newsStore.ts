@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Article, NewsSource } from '../lib/types'
+import { Article, NewsSource, SocialPlatform } from '../lib/types'
 import { ipc } from '../lib/ipc'
 
 interface GeneratedPost {
@@ -20,6 +20,7 @@ interface NewsState {
   generatingForArticle: string | null
   generatedPost: GeneratedPost | null
   generationError: string | null
+  generatedPlatform: SocialPlatform | null
   setSearchQuery: (q: string) => void
   setSelectedSourceId: (id: string | null) => void
   setMinScore: (score: number) => void
@@ -32,7 +33,7 @@ interface NewsState {
   loadArticles: () => Promise<void>
   scrapeSource: (sourceId: string) => Promise<void>
   scrapeAll: () => Promise<void>
-  generatePost: (articleId: string) => Promise<void>
+  generatePost: (articleId: string, platform?: SocialPlatform) => Promise<void>
   clearGeneratedPost: () => void
 }
 
@@ -48,6 +49,7 @@ export const useNewsStore = create<NewsState>((set, get) => ({
   generatingForArticle: null,
   generatedPost: null,
   generationError: null,
+  generatedPlatform: null,
 
   setSearchQuery: (q) => set({ searchQuery: q }),
   setSelectedSourceId: (id) => set({ selectedSourceId: id }),
@@ -121,9 +123,9 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     set({ scraping: false })
   },
 
-  generatePost: async (articleId) => {
-    set({ generatingForArticle: articleId, generatedPost: null, generationError: null })
-    const result = await ipc().generatePost(articleId)
+  generatePost: async (articleId, platform) => {
+    set({ generatingForArticle: articleId, generatedPost: null, generationError: null, generatedPlatform: platform || 'linkedin' })
+    const result = await ipc().generatePost(articleId, platform)
     if (result.success && result.data) {
       set({ generatedPost: result.data, generatingForArticle: null })
     } else {
@@ -131,5 +133,5 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     }
   },
 
-  clearGeneratedPost: () => set({ generatedPost: null, generationError: null }),
+  clearGeneratedPost: () => set({ generatedPost: null, generationError: null, generatedPlatform: null }),
 }))

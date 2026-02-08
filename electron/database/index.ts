@@ -33,6 +33,23 @@ export function initDatabase(): void {
     // Column already exists
   }
 
+  // Seed default personality if table is empty
+  const personalityCount = database.prepare('SELECT COUNT(*) as count FROM personalities').get() as { count: number }
+  if (personalityCount.count === 0) {
+    database.prepare(`
+      INSERT INTO personalities (id, name, system_prompt, tone, style, language, length, is_default)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(
+      'default-personality',
+      'Tech Thought Leader',
+      'Eres un referente tech que escribe posts de LinkedIn en español a partir de noticias tech en inglés. Tono formal pero no solemne, ligeramente ácido e irónico pero que no cae mal. Analizas las implicaciones reales, no solo resumes.',
+      'thought-leader',
+      'opinion',
+      'es',
+      'medium'
+    )
+  }
+
   logger.info('db', 'Database initialized', { path: path.join(app.getPath('userData'), 'nexus.db') })
 }
 

@@ -1,4 +1,4 @@
-import { Article, NewsSource, Post, Interaction, AgentLog, AgentState, LLMConfig, IpcResult, SocialAccount, LogEntry } from './types'
+import { Article, NewsSource, Post, Interaction, AgentLog, AgentState, LLMConfig, IpcResult, SocialAccount, LogEntry, Personality, SocialPlatform } from './types'
 
 declare global {
   interface Window {
@@ -16,7 +16,7 @@ export interface NexusAPI {
   getArticles(filters?: { search?: string; sourceId?: string; minScore?: number; savedOnly?: boolean }): Promise<IpcResult<Article[]>>
   scrapeSource(sourceId: string): Promise<IpcResult<number>>
   toggleSaved(id: string): Promise<IpcResult<Article>>
-  generatePost(articleId: string): Promise<IpcResult<{ content: string; hashtags: string; articleId: string }>>
+  generatePost(articleId: string, platform?: SocialPlatform): Promise<IpcResult<{ content: string; hashtags: string; articleId: string }>>
 
   // Posts
   getPosts(status?: string): Promise<IpcResult<Post[]>>
@@ -29,6 +29,8 @@ export interface NexusAPI {
   // Social Accounts
   getAccounts(): Promise<IpcResult<SocialAccount[]>>
   connectLinkedIn(): Promise<IpcResult<SocialAccount>>
+  connectInstagram(): Promise<IpcResult<SocialAccount>>
+  connectFacebook(): Promise<IpcResult<SocialAccount>>
   disconnectAccount(id: string): Promise<IpcResult<void>>
 
   // Interactions
@@ -51,6 +53,18 @@ export interface NexusAPI {
   setLLMConfig(config: LLMConfig): Promise<IpcResult<void>>
   getLinkedInConfig(): Promise<IpcResult<{ clientId: string; clientSecret: string }>>
   setLinkedInConfig(config: { clientId: string; clientSecret: string }): Promise<IpcResult<void>>
+  getFacebookConfig(): Promise<IpcResult<{ appId: string; appSecret: string }>>
+  setFacebookConfig(config: { appId: string; appSecret: string }): Promise<IpcResult<void>>
+
+  // Personalities
+  listPersonalities(): Promise<IpcResult<Personality[]>>
+  getPersonality(id: string): Promise<IpcResult<Personality>>
+  createPersonality(data: Omit<Personality, 'id' | 'is_default' | 'created_at'>): Promise<IpcResult<Personality>>
+  updatePersonality(id: string, data: Partial<Omit<Personality, 'id' | 'is_default' | 'created_at'>>): Promise<IpcResult<Personality>>
+  deletePersonality(id: string): Promise<IpcResult<void>>
+  setDefaultPersonality(id: string): Promise<IpcResult<void>>
+  assignPlatformPersonality(platform: SocialPlatform, personalityId: string): Promise<IpcResult<void>>
+  getPlatformAssignments(): Promise<IpcResult<Record<SocialPlatform, string>>>
 
   // Debug Log
   onLogEntry(callback: (entry: LogEntry) => void): () => void

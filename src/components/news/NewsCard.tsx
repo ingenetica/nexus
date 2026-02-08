@@ -1,13 +1,14 @@
-import React from 'react'
-import { Article } from '../../lib/types'
+import React, { useState, useRef, useEffect } from 'react'
+import { Article, SocialPlatform } from '../../lib/types'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
+import { usePublishStore } from '../../stores/publishStore'
 
 interface NewsCardProps {
   article: Article
   generating?: boolean
-  onCreatePost?: (article: Article) => void
+  onCreatePost?: (article: Article, platform: SocialPlatform) => void
   onToggleSaved?: (article: Article) => void
 }
 
@@ -21,11 +22,39 @@ function isSafeImageUrl(url: string | null | undefined): boolean {
   }
 }
 
+const PLATFORM_ICONS: Record<SocialPlatform, string> = {
+  linkedin: 'in',
+  instagram: 'IG',
+  facebook: 'FB',
+}
+
 export const NewsCard: React.FC<NewsCardProps> = ({ article, generating, onCreatePost, onToggleSaved }) => {
   const scoreVariant = article.relevance_score >= 0.7 ? 'success' :
     article.relevance_score >= 0.4 ? 'warning' : 'default'
 
   const tags = article.tags ? article.tags.split(',').filter(Boolean) : []
+  const { accounts } = usePublishStore()
+  const [showPlatformMenu, setShowPlatformMenu] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close menu on click outside
+  useEffect(() => {
+    if (!showPlatformMenu) return
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowPlatformMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showPlatformMenu])
+
+  const connectedPlatforms = Array.from(new Set(accounts.map(a => a.platform))) as SocialPlatform[]
+
+  const handleCreatePost = (platform: SocialPlatform) => {
+    setShowPlatformMenu(false)
+    onCreatePost?.(article, platform)
+  }
 
   return (
     <div className="bg-nexus-surface rounded-lg border border-nexus-border p-4 hover:border-nexus-primary/30 transition-all duration-200 group">
@@ -67,9 +96,42 @@ export const NewsCard: React.FC<NewsCardProps> = ({ article, generating, onCreat
           >
             {article.saved ? 'Saved' : 'Save'}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => onCreatePost?.(article)} disabled={generating}>
-            {generating ? <><Spinner size="sm" /> Generating...</> : 'Create Post'}
-          </Button>
+          <div className="relative" ref={menuRef}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (connectedPlatforms.length === 0) {
+                  // No accounts connected, default to linkedin
+                  onCreatePost?.(article, 'linkedin')
+                } else if (connectedPlatforms.length === 1) {
+                  // Only one platform, use it directly
+                  onCreatePost?.(article, connectedPlatforms[0])
+                } else {
+                  setShowPlatformMenu(!showPlatformMenu)
+                }
+              }}
+              disabled={generating}
+            >
+              {generating ? <><Spinner size="sm" /> Generating...</> : 'Create Post'}
+            </Button>
+            {showPlatformMenu && connectedPlatforms.length > 1 && (
+              <div className="absolute right-0 top-full mt-1 bg-nexus-surface-elevated border border-nexus-border rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+                {connectedPlatforms.map(platform => (
+                  <button
+                    key={platform}
+                    onClick={() => handleCreatePost(platform)}
+                    className="w-full text-left px-3 py-1.5 text-xs text-nexus-text-primary hover:bg-nexus-primary/10 hover:text-nexus-primary transition-colors flex items-center gap-2"
+                  >
+                    <span className="w-5 h-5 flex items-center justify-center bg-nexus-bg border border-nexus-border rounded text-[9px] font-bold">
+                      {PLATFORM_ICONS[platform]}
+                    </span>
+                    <span className="capitalize">{platform}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

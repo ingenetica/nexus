@@ -1,5 +1,8 @@
 import { getDb } from '../database/index'
 import { getLinkedInClient } from './linkedin'
+import { getInstagramClient } from './instagram'
+import { getFacebookClient } from './facebook'
+import { SocialPlatform } from './social-base'
 import { logger } from './logger'
 
 let intervalId: ReturnType<typeof setInterval> | null = null
@@ -43,19 +46,35 @@ async function checkScheduledPosts(): Promise<void> {
         ? `${post.content}\n\n${post.hashtags}`
         : post.content
 
-      if (post.platform === 'linkedin') {
-        const client = getLinkedInClient()
-        const result = await client.publish(fullContent)
+      // Get article image for Instagram
+      let imageUrl: string | undefined
+      const articleRow = db.prepare('SELECT image_url FROM articles a JOIN posts p ON p.article_id = a.id WHERE p.id = ?').get(post.id) as { image_url?: string } | undefined
+      if (articleRow?.image_url) imageUrl = articleRow.image_url
 
-        if (result.success) {
-          db.prepare('UPDATE posts SET status = ?, published_at = datetime(?), external_id = ? WHERE id = ?')
-            .run('published', new Date().toISOString(), result.externalId || null, post.id)
-          logger.info('scheduler', `Post ${post.id} published successfully`)
-        } else {
-          db.prepare('UPDATE posts SET status = ?, error = ? WHERE id = ?')
-            .run('failed', result.error || 'Unknown error', post.id)
-          logger.error('scheduler', `Post ${post.id} publish failed`, { error: result.error })
-        }
+      const clientMap: Record<string, () => SocialPlatform> = {
+        linkedin: () => getLinkedInClient(),
+        instagram: () => getInstagramClient(),
+        facebook: () => getFacebookClient(),
+      }
+
+      const getClient = clientMap[post.platform]
+      if (!getClient) {
+        db.prepare('UPDATE posts SET status = ?, error = ? WHERE id = ?')
+          .run('failed', `Unknown platform: ${post.platform}`, post.id)
+        continue
+      }
+
+      const client = getClient()
+      const result = await client.publish(fullContent, { imageUrl })
+
+      if (result.success) {
+        db.prepare('UPDATE posts SET status = ?, published_at = datetime(?), external_id = ? WHERE id = ?')
+          .run('published', new Date().toISOString(), result.externalId || null, post.id)
+        logger.info('scheduler', `Post ${post.id} published successfully to ${post.platform}`)
+      } else {
+        db.prepare('UPDATE posts SET status = ?, error = ? WHERE id = ?')
+          .run('failed', result.error || 'Unknown error', post.id)
+        logger.error('scheduler', `Post ${post.id} publish failed`, { error: result.error })
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)

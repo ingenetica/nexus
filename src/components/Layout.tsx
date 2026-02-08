@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { TabId } from '../lib/types'
 import { NewsTab } from './tabs/NewsTab'
 import { LLMConfigTab } from './tabs/LLMConfigTab'
+import { AccountsTab } from './tabs/AccountsTab'
 import { PublishTab } from './tabs/PublishTab'
 import { InteractionsTab } from './tabs/InteractionsTab'
 import { AgentDashboardTab } from './tabs/AgentDashboardTab'
@@ -13,6 +14,7 @@ import { ClaudePanel } from './ClaudePanel'
 const TAB_COMPONENTS: Record<TabId, React.FC> = {
   'news': NewsTab,
   'llm-config': LLMConfigTab,
+  'accounts': AccountsTab,
   'publish': PublishTab,
   'interactions': InteractionsTab,
   'agents': AgentDashboardTab,

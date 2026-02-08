@@ -16,6 +16,8 @@ interface PublishState {
   schedulePost: (id: string, scheduledAt: string) => Promise<void>
   loadAccounts: () => Promise<void>
   connectLinkedIn: () => Promise<void>
+  connectInstagram: () => Promise<void>
+  connectFacebook: () => Promise<void>
   disconnectAccount: (id: string) => Promise<void>
 }
 
@@ -73,6 +75,22 @@ export const usePublishStore = create<PublishState>((set, get) => ({
     const result = await ipc().connectLinkedIn()
     if (!result.success) {
       throw new Error(result.error || 'LinkedIn connection failed. Check your OAuth credentials in Settings.')
+    }
+    await get().loadAccounts()
+  },
+
+  connectInstagram: async () => {
+    const result = await ipc().connectInstagram()
+    if (!result.success) {
+      throw new Error(result.error || 'Instagram connection failed. Check your Facebook App credentials in Settings.')
+    }
+    await get().loadAccounts()
+  },
+
+  connectFacebook: async () => {
+    const result = await ipc().connectFacebook()
+    if (!result.success) {
+      throw new Error(result.error || 'Facebook connection failed. Check your Facebook App credentials in Settings.')
     }
     await get().loadAccounts()
   },

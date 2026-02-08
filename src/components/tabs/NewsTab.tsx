@@ -9,24 +9,25 @@ import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Modal } from '../ui/Modal'
 import { Spinner } from '../ui/Spinner'
-import { Article } from '../../lib/types'
+import { Article, SocialPlatform } from '../../lib/types'
 
 export const NewsTab: React.FC = () => {
   const {
     sources, articles, loading, scraping,
     searchQuery, selectedSourceId, minScore, savedOnly,
-    generatingForArticle, generatedPost, generationError,
+    generatingForArticle, generatedPost, generationError, generatedPlatform,
     setSearchQuery, setSelectedSourceId, setMinScore, setSavedOnly,
     loadSources, loadArticles, addSource, deleteSource, toggleSource, toggleSaved, scrapeAll,
     generatePost, clearGeneratedPost,
   } = useNewsStore()
-  const { createPost } = usePublishStore()
+  const { createPost, loadAccounts } = usePublishStore()
 
   const [showComposer, setShowComposer] = useState(false)
 
   useEffect(() => {
     loadSources()
     loadArticles()
+    loadAccounts()
   }, [])
 
   useEffect(() => {
@@ -40,14 +41,14 @@ export const NewsTab: React.FC = () => {
     }
   }, [generatedPost])
 
-  const handleCreatePost = (article: Article) => {
-    generatePost(article.id)
+  const handleCreatePost = (article: Article, platform: SocialPlatform) => {
+    generatePost(article.id, platform)
   }
 
-  const handleSaveComposed = (content: string, hashtags: string) => {
+  const handleSaveComposed = (content: string, hashtags: string, platform?: SocialPlatform) => {
     createPost({
       article_id: generatedPost?.articleId || null,
-      platform: 'linkedin',
+      platform: platform || generatedPlatform || 'linkedin',
       content,
       hashtags,
       status: 'draft',
@@ -119,11 +120,12 @@ export const NewsTab: React.FC = () => {
         </div>
       </div>
 
-      <Modal open={showComposer && !!generatedPost} onClose={() => { setShowComposer(false); clearGeneratedPost() }} title="Edit Generated Post">
+      <Modal open={showComposer && !!generatedPost} onClose={() => { setShowComposer(false); clearGeneratedPost() }} title={`Edit Generated Post (${generatedPlatform || 'linkedin'})`}>
         <PostComposer
           initialContent={generatedPost?.content || ''}
           initialHashtags={generatedPost?.hashtags || ''}
-          onSave={handleSaveComposed}
+          platform={generatedPlatform || 'linkedin'}
+          onSave={(content, hashtags) => handleSaveComposed(content, hashtags)}
           onCancel={() => { setShowComposer(false); clearGeneratedPost() }}
         />
       </Modal>

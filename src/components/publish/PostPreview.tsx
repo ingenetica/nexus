@@ -1,5 +1,5 @@
 import React from 'react'
-import { Post } from '../../lib/types'
+import { Post, SocialPlatform } from '../../lib/types'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 
@@ -22,13 +22,30 @@ const statusVariant = (status: string) => {
   }
 }
 
+const PLATFORM_COLORS: Record<SocialPlatform, string> = {
+  linkedin: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  instagram: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  facebook: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+}
+
+const PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  linkedin: 'in',
+  instagram: 'IG',
+  facebook: 'FB',
+}
+
 export const PostPreview: React.FC<PostPreviewProps> = ({ post, onEdit, onPublish, onSchedule, onDelete }) => {
+  const platformColor = PLATFORM_COLORS[post.platform] || PLATFORM_COLORS.linkedin
+
   return (
     <div className="bg-nexus-surface rounded-lg border border-nexus-border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Badge variant={statusVariant(post.status)}>{post.status}</Badge>
-          <span className="text-xs text-nexus-text-secondary uppercase">{post.platform}</span>
+          <span className={`inline-flex items-center justify-center w-6 h-6 rounded border text-[9px] font-bold ${platformColor}`}>
+            {PLATFORM_LABELS[post.platform] || post.platform}
+          </span>
+          <span className="text-xs text-nexus-text-secondary capitalize">{post.platform}</span>
         </div>
         <span className="text-[10px] text-nexus-text-secondary">
           {new Date(post.created_at).toLocaleString()}

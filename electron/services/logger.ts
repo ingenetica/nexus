@@ -55,7 +55,7 @@ export function log(level: LogLevel, category: LogCategory, message: string, dat
     data,
   }
 
-  // Write to file
+  // Write to log file
   const stream = getLogStream()
   const line = `[${entry.timestamp}] [${level.toUpperCase()}] [${category}] ${message}${data ? ' ' + JSON.stringify(data) : ''}\n`
   stream.write(line)

@@ -1,51 +1,37 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron'
 import path from 'path'
-import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 import { initDatabase, closeDatabase, getDb } from './database/index'
 import { registerAllHandlers } from './ipc/handlers'
 import { startScheduler, stopScheduler } from './services/scheduler'
 import { logger, closeLogger } from './services/logger'
 
-// --- Hot-reload cleanup: kill previous Electron process on dev restart ---
-const pidFile = path.join(app.getPath('userData'), 'nexus-dev.pid')
+const isDev = !!process.env.VITE_DEV_SERVER_URL
 
-function killPreviousInstance(): void {
-  try {
-    const oldPid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10)
-    if (oldPid && oldPid !== process.pid) {
-      // Verify the process is still alive before sending signal
-      try {
-        process.kill(oldPid, 0) // signal 0 = existence check only
-        process.kill(oldPid, 'SIGTERM')
-      } catch {
-        // Process doesn't exist or we lack permission — safe to ignore
-      }
-    }
-  } catch {
-    // No PID file or parse error — fine
+// In production: enforce single instance via OS-level lock
+if (!isDev) {
+  const gotLock = app.requestSingleInstanceLock()
+  if (!gotLock) {
+    app.quit()
   }
 }
 
-function writePidFile(): void {
-  try {
-    fs.writeFileSync(pidFile, String(process.pid))
-  } catch {
-    // Non-critical
+// In dev: force-exit on any termination signal so vite-plugin-electron
+// can restart cleanly. On macOS, app.quit() alone doesn't exit because
+// 'window-all-closed' keeps the process alive on darwin.
+if (isDev) {
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+    process.on(sig, () => {
+      try { stopScheduler() } catch {}
+      try { closeDatabase() } catch {}
+      try { closeLogger() } catch {}
+      process.exit(0)
+    })
   }
-}
-
-function removePidFile(): void {
-  try {
-    fs.unlinkSync(pidFile)
-  } catch {
-    // Already gone
-  }
-}
-
-if (process.env.VITE_DEV_SERVER_URL) {
-  killPreviousInstance()
-  writePidFile()
+  // Also handle the 'before-quit' event from app.quit() calls
+  app.on('before-quit', () => {
+    process.exit(0)
+  })
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -82,8 +68,7 @@ function createWindow(): void {
 
   // Restrict navigation to app origin only
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const devUrl = process.env.VITE_DEV_SERVER_URL
-    if (devUrl && url.startsWith(devUrl)) return
+    if (isDev && url.startsWith(process.env.VITE_DEV_SERVER_URL!)) return
     if (url.startsWith('file://')) return
     event.preventDefault()
   })
@@ -92,8 +77,8 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // Load the app
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL!)
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
@@ -105,16 +90,19 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  logger.info('system', 'Nexus starting up')
+  logger.info('system', `Nexus starting (PID ${process.pid})`)
 
-  // Security: set Content-Security-Policy
+  // Security: Content-Security-Policy
+  // In dev mode, Vite HMR needs 'unsafe-eval' for script-src and ws: for connect-src
+  const cspPolicy = isDev
+    ? "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' ws://localhost:* http://localhost:*; font-src 'self'"
+    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; font-src 'self'"
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' ws://localhost:*; font-src 'self'",
-        ],
+        'Content-Security-Policy': [cspPolicy],
       },
     })
   })
@@ -150,14 +138,9 @@ app.on('window-all-closed', () => {
   stopScheduler()
   closeDatabase()
   closeLogger()
-  removePidFile()
   if (process.platform !== 'darwin') {
     app.quit()
   }
-})
-
-app.on('before-quit', () => {
-  removePidFile()
 })
 
 function seedDefaultSources(): void {

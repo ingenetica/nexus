@@ -36,6 +36,7 @@ export function registerTerminalHandlers(): void {
         '-p', message,
         '--print',
         '--output-format', 'text',
+        '--max-turns', '3',
       ]
 
       if (sessionId) {

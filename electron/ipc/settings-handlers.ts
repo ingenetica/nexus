@@ -24,8 +24,15 @@ export function registerSettingsHandlers(): void {
     }
   })
 
+  // Allowlist of keys that can be written via the generic settings:set handler.
+  // Sensitive keys (linkedin_config) must use their dedicated encrypted handlers.
+  const ALLOWED_SETTINGS_KEYS = ['llm_config', 'theme', 'notifications', 'scheduler_interval']
+
   ipcMain.handle('settings:set', (_event, key: string, value: string) => {
     try {
+      if (!ALLOWED_SETTINGS_KEYS.includes(key)) {
+        return { success: false, error: `Setting key "${key}" is not allowed via generic setter` }
+      }
       const db = getDb()
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
       return { success: true }
@@ -64,13 +71,12 @@ export function registerSettingsHandlers(): void {
       const db = getDb()
       const row = db.prepare("SELECT value FROM settings WHERE key = 'linkedin_config'").get() as { value: string } | undefined
       if (row?.value) {
+        if (!safeStorage.isEncryptionAvailable()) {
+          return { success: false, error: 'System encryption unavailable. Cannot decrypt credentials.' }
+        }
         const encrypted = JSON.parse(row.value) as { clientId: string; clientSecret: string }
-        const clientId = safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(Buffer.from(encrypted.clientId, 'base64'))
-          : encrypted.clientId
-        const clientSecret = safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(Buffer.from(encrypted.clientSecret, 'base64'))
-          : encrypted.clientSecret
+        const clientId = safeStorage.decryptString(Buffer.from(encrypted.clientId, 'base64'))
+        const clientSecret = safeStorage.decryptString(Buffer.from(encrypted.clientSecret, 'base64'))
         return { success: true, data: { clientId, clientSecret } }
       }
       return { success: true, data: { clientId: '', clientSecret: '' } }
@@ -81,13 +87,12 @@ export function registerSettingsHandlers(): void {
 
   ipcMain.handle('settings:setLinkedInConfig', (_event, config: { clientId: string; clientSecret: string }) => {
     try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        return { success: false, error: 'System keychain encryption is not available. Cannot securely store credentials.' }
+      }
       const db = getDb()
-      const encryptedId = safeStorage.isEncryptionAvailable()
-        ? safeStorage.encryptString(config.clientId).toString('base64')
-        : config.clientId
-      const encryptedSecret = safeStorage.isEncryptionAvailable()
-        ? safeStorage.encryptString(config.clientSecret).toString('base64')
-        : config.clientSecret
+      const encryptedId = safeStorage.encryptString(config.clientId).toString('base64')
+      const encryptedSecret = safeStorage.encryptString(config.clientSecret).toString('base64')
       db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('linkedin_config', ?)").run(
         JSON.stringify({ clientId: encryptedId, clientSecret: encryptedSecret })
       )

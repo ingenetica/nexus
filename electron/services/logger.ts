@@ -18,9 +18,22 @@ interface LogEntry {
 let logCounter = 0
 let logStream: fs.WriteStream | null = null
 
+const MAX_LOG_SIZE = 10 * 1024 * 1024 // 10 MB
+
 function getLogStream(): fs.WriteStream {
   if (!logStream) {
     const logPath = path.join(app.getPath('userData'), 'nexus-debug.log')
+    // Rotate if log file exceeds max size
+    try {
+      const stat = fs.statSync(logPath)
+      if (stat.size > MAX_LOG_SIZE) {
+        const rotatedPath = logPath + '.old'
+        try { fs.unlinkSync(rotatedPath) } catch {}
+        fs.renameSync(logPath, rotatedPath)
+      }
+    } catch {
+      // File doesn't exist yet, that's fine
+    }
     logStream = fs.createWriteStream(logPath, { flags: 'a' })
   }
   return logStream

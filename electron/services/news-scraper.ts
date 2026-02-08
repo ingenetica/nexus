@@ -6,6 +6,34 @@ import { logger } from './logger'
 
 const rssParser = new RSSParser()
 
+function validateUrl(url: string): void {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error(`Unsupported URL scheme: ${parsed.protocol}`)
+    }
+    // Block private/internal IPs
+    const hostname = parsed.hostname
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.') ||
+      hostname === '169.254.169.254' ||
+      hostname === '[::1]' ||
+      hostname === '0.0.0.0'
+    ) {
+      throw new Error(`URL points to a private/internal address: ${hostname}`)
+    }
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(`Invalid URL: ${url}`)
+    }
+    throw err
+  }
+}
+
 export interface ScrapedArticle {
   title: string
   url: string
@@ -18,6 +46,7 @@ export interface ScrapedArticle {
 
 export async function scrapeRSSFeed(feedUrl: string): Promise<ScrapedArticle[]> {
   try {
+    validateUrl(feedUrl)
     const feed = await rssParser.parseURL(feedUrl)
     return (feed.items || []).map(item => ({
       title: item.title || 'Untitled',
@@ -36,6 +65,7 @@ export async function scrapeRSSFeed(feedUrl: string): Promise<ScrapedArticle[]> 
 
 export async function scrapeWebPage(url: string): Promise<ScrapedArticle[]> {
   try {
+    validateUrl(url)
     const response = await fetch(url)
     const html = await response.text()
     const $ = cheerio.load(html)

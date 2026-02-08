@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process'
 import { AgentConfig, AgentResult } from './types'
+import { getClaudePath, getClaudeEnv } from '../services/claude-cli'
 
 export class BaseAgent {
   protected config: AgentConfig
@@ -80,16 +81,15 @@ export class BaseAgent {
         // Note: --max-budget-usd may not be supported in all claude CLI versions
       }
 
-      if (this.config.allowedTools.length > 0) {
-        args.push('--allowedTools', this.config.allowedTools.join(','))
-      }
+      // Always pass --allowedTools: empty string means no tools allowed
+      args.push('--allowedTools', this.config.allowedTools.join(',') || '')
 
       // Use --append-system-prompt for the system prompt
       args.push('--append-system-prompt', this.config.systemPrompt)
 
-      this.process = spawn('claude', args, {
+      this.process = spawn(getClaudePath(), args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
+        env: getClaudeEnv(),
       })
 
       let stdout = ''

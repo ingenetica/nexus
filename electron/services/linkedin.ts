@@ -22,14 +22,10 @@ export class LinkedInClient extends SocialPlatform {
     try {
       const db = getDb()
       const row = db.prepare("SELECT value FROM settings WHERE key = 'linkedin_config'").get() as { value: string } | undefined
-      if (row?.value) {
+      if (row?.value && safeStorage.isEncryptionAvailable()) {
         const encrypted = JSON.parse(row.value) as { clientId: string; clientSecret: string }
-        dbClientId = safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(Buffer.from(encrypted.clientId, 'base64'))
-          : encrypted.clientId
-        dbClientSecret = safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(Buffer.from(encrypted.clientSecret, 'base64'))
-          : encrypted.clientSecret
+        dbClientId = safeStorage.decryptString(Buffer.from(encrypted.clientId, 'base64'))
+        dbClientSecret = safeStorage.decryptString(Buffer.from(encrypted.clientSecret, 'base64'))
       }
     } catch {
       // DB not ready or decryption failed, fall through to env vars
@@ -55,13 +51,29 @@ export class LinkedInClient extends SocialPlatform {
     const state = uuid()
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${this.clientId}&redirect_uri=${encodeURIComponent(this.redirectUri)}&state=${state}&scope=openid%20profile%20w_member_social`
 
-    // Open auth URL in a new browser window
+    // Open auth URL in a sandboxed browser window
     const authWindow = new BrowserWindow({
       width: 600,
       height: 700,
       show: true,
-      webPreferences: { nodeIntegration: false },
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
     })
+
+    // Restrict navigation to LinkedIn domains only
+    authWindow.webContents.on('will-navigate', (event, url) => {
+      const parsed = new URL(url)
+      if (!parsed.hostname.endsWith('linkedin.com') && !parsed.hostname.startsWith('localhost')) {
+        event.preventDefault()
+      }
+    })
+
+    // Block popup windows
+    authWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
     authWindow.loadURL(authUrl)
 
     // Start local server to receive callback
@@ -97,14 +109,16 @@ export class LinkedInClient extends SocialPlatform {
     })
     const profile = await profileResponse.json() as { name?: string; sub?: string }
 
-    // Encrypt and store tokens
+    // Encrypt and store tokens — refuse to store if encryption unavailable
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('System keychain encryption is not available. Cannot securely store OAuth tokens.')
+    }
+
     const db = getDb()
-    const encryptedAccess = safeStorage.isEncryptionAvailable()
-      ? safeStorage.encryptString(tokens.access_token).toString('base64')
-      : tokens.access_token
-    const encryptedRefresh = tokens.refresh_token && safeStorage.isEncryptionAvailable()
+    const encryptedAccess = safeStorage.encryptString(tokens.access_token).toString('base64')
+    const encryptedRefresh = tokens.refresh_token
       ? safeStorage.encryptString(tokens.refresh_token).toString('base64')
-      : tokens.refresh_token || ''
+      : ''
 
     db.prepare(`
       INSERT OR REPLACE INTO social_accounts (id, platform, name, profile_url, access_token_encrypted, refresh_token_encrypted, token_expires_at, created_at)
@@ -218,14 +232,17 @@ export class LinkedInClient extends SocialPlatform {
 
     if (!account) return null
 
-    if (safeStorage.isEncryptionAvailable()) {
-      try {
-        return safeStorage.decryptString(Buffer.from(account.access_token_encrypted, 'base64'))
-      } catch {
-        return account.access_token_encrypted
-      }
+    if (!safeStorage.isEncryptionAvailable()) {
+      logger.error('ipc', 'Cannot decrypt LinkedIn token: system encryption unavailable')
+      return null
     }
-    return account.access_token_encrypted
+
+    try {
+      return safeStorage.decryptString(Buffer.from(account.access_token_encrypted, 'base64'))
+    } catch {
+      logger.error('ipc', 'Failed to decrypt LinkedIn access token')
+      return null
+    }
   }
 
   private waitForCallback(expectedState: string): Promise<string> {
@@ -255,8 +272,8 @@ export class LinkedInClient extends SocialPlatform {
         }
       })
 
-      server.listen(CALLBACK_PORT, () => {
-        logger.info('ipc', `LinkedIn OAuth callback server listening on port ${CALLBACK_PORT}`)
+      server.listen(CALLBACK_PORT, '127.0.0.1', () => {
+        logger.info('ipc', `LinkedIn OAuth callback server listening on 127.0.0.1:${CALLBACK_PORT}`)
       })
 
       // Timeout after 5 minutes

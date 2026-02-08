@@ -5,6 +5,7 @@ import { getDb } from '../database/index'
 import { DEFAULT_LLM_CONFIG } from './settings-handlers'
 import { scrapeSourceById } from '../services/news-scraper'
 import { logger } from '../services/logger'
+import { getClaudePath, getClaudeEnv } from '../services/claude-cli'
 
 export function registerNewsHandlers(): void {
   ipcMain.handle('news:getSources', () => {
@@ -118,8 +119,11 @@ export function registerNewsHandlers(): void {
       const configRow = db.prepare("SELECT value FROM settings WHERE key = 'llm_config'").get() as { value: string } | undefined
       const config = configRow?.value ? JSON.parse(configRow.value) : DEFAULT_LLM_CONFIG
 
-      // Build the prompt
+      // Build the prompt — include system instructions inline for robustness
+      const systemPrompt = config.systemPrompt || DEFAULT_LLM_CONFIG.systemPrompt
       const userPrompt = [
+        systemPrompt,
+        '',
         `Write a ${config.length} LinkedIn post in ${config.language} based on this article:`,
         `Title: ${article.title}`,
         `Summary: ${article.summary}`,
@@ -127,8 +131,6 @@ export function registerNewsHandlers(): void {
         `Requirements: Tone: ${config.tone}, Style: ${config.style}, ${config.hashtagCount} hashtags.`,
         `Output ONLY the post text followed by the hashtags on a separate line. No explanations, no metadata.`,
       ].join('\n')
-
-      const systemPrompt = config.systemPrompt || DEFAULT_LLM_CONFIG.systemPrompt
 
       // Map model config to claude CLI model names
       const modelMap: Record<string, string> = {
@@ -138,21 +140,21 @@ export function registerNewsHandlers(): void {
       }
       const model = modelMap[config.model] || 'sonnet'
 
-      logger.info('ipc', 'Generating post via Claude CLI', { articleId, model })
+      const claudePath = getClaudePath()
+      logger.info('ipc', 'Generating post via Claude CLI', { articleId, model, claudePath })
 
-      // Spawn claude CLI
+      // Run claude CLI (one-shot with spawn)
       const result = await new Promise<string>((resolve, reject) => {
         const args = [
           '--print',
           '--output-format', 'text',
           '--model', model,
-          '--append-system-prompt', systemPrompt,
           '-p', userPrompt,
         ]
 
-        const proc = spawn('claude', args, {
-          timeout: 120000,
-          env: { ...process.env, TERM: 'dumb' },
+        const proc = spawn(claudePath, args, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: getClaudeEnv(),
         })
 
         let stdout = ''
@@ -161,17 +163,28 @@ export function registerNewsHandlers(): void {
         proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
         proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
 
-        proc.on('close', (code) => {
+        proc.on('close', (code, signal) => {
           if (code === 0) {
             resolve(stdout.trim())
           } else {
-            reject(new Error(`Claude CLI exited with code ${code}: ${stderr}`))
+            logger.error('ipc', 'Claude CLI error', {
+              code, signal,
+              stderr: stderr.substring(0, 500),
+              stdout: stdout.substring(0, 200),
+            })
+            reject(new Error(stderr.trim() || `Claude CLI exited with code ${code}`))
           }
         })
 
         proc.on('error', (err) => {
-          reject(new Error(`Failed to spawn Claude CLI: ${err.message}`))
+          reject(new Error(`Failed to start Claude CLI: ${err.message}`))
         })
+
+        // Safety timeout: 2 minutes
+        setTimeout(() => {
+          try { proc.kill() } catch {}
+          reject(new Error('Claude CLI timed out after 2 minutes'))
+        }, 120000)
       })
 
       // Parse result: split content from hashtags

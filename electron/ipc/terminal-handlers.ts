@@ -1,94 +1,94 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { logger } from '../services/logger'
+import { getClaudePath, getClaudeEnv } from '../services/claude-cli'
 
 let claudeProcess: ChildProcess | null = null
 let sessionId: string | null = null
 
 function broadcast(channel: string, data: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, data)
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, data)
+    }
   }
 }
 
 function killClaude(): void {
   if (claudeProcess) {
-    claudeProcess.kill('SIGTERM')
+    try {
+      claudeProcess.kill('SIGTERM')
+    } catch {
+      // Process already dead
+    }
     claudeProcess = null
-    sessionId = null
   }
 }
 
 export function registerTerminalHandlers(): void {
   ipcMain.handle('claude:send', async (_event, message: string) => {
     try {
-      // If no existing process, spawn one
-      if (!claudeProcess) {
-        const args = [
-          '-p', message,
-          '--print',
-          '--output-format', 'stream-json',
-        ]
+      // Kill any existing process first — --print mode is one-shot, not interactive
+      killClaude()
 
-        if (sessionId) {
-          args.push('--continue', sessionId)
+      const claudePath = getClaudePath()
+      const args = [
+        '-p', message,
+        '--print',
+        '--output-format', 'text',
+      ]
+
+      if (sessionId) {
+        args.push('--continue', sessionId)
+      }
+
+      logger.info('system', 'Spawning Claude Code', { claudePath, args: args.filter(a => a !== message) })
+
+      claudeProcess = spawn(claudePath, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: getClaudeEnv(),
+        detached: false,
+      })
+
+      let fullOutput = ''
+
+      claudeProcess.stdout?.on('data', (data: Buffer) => {
+        const chunk = data.toString()
+        fullOutput += chunk
+        broadcast('claude:stream', { type: 'text', content: chunk })
+      })
+
+      claudeProcess.stderr?.on('data', (data: Buffer) => {
+        const text = data.toString()
+        // Filter out non-error stderr (progress indicators, etc.)
+        if (text.trim()) {
+          logger.warn('system', 'Claude stderr', { text: text.substring(0, 200) })
+        }
+      })
+
+      claudeProcess.on('close', (code, signal) => {
+        logger.info('system', 'Claude process exited', { code, signal, outputLength: fullOutput.length })
+
+        if (code === 0 && !fullOutput) {
+          broadcast('claude:stream', { type: 'text', content: '(empty response)' })
+        } else if (code !== 0 && code !== null) {
+          broadcast('claude:stream', {
+            type: 'error',
+            error: `Claude exited with code ${code}${signal ? ` (${signal})` : ''}`,
+          })
         }
 
-        logger.info('system', 'Spawning Claude Code', { args })
+        broadcast('claude:stream', { type: 'done', code })
+        claudeProcess = null
+      })
 
-        claudeProcess = spawn('claude', args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env },
-        })
+      claudeProcess.on('error', (err) => {
+        logger.error('system', 'Claude process error', { error: err.message })
+        broadcast('claude:stream', { type: 'error', error: `Failed to start Claude: ${err.message}` })
+        claudeProcess = null
+      })
 
-        let fullOutput = ''
-
-        claudeProcess.stdout?.on('data', (data: Buffer) => {
-          const text = data.toString()
-          fullOutput += text
-
-          // Try to parse each line as JSON (stream-json format)
-          const lines = text.split('\n').filter(Boolean)
-          for (const line of lines) {
-            try {
-              const parsed = JSON.parse(line)
-              broadcast('claude:stream', parsed)
-
-              // Capture session ID if present
-              if (parsed.session_id) {
-                sessionId = parsed.session_id
-              }
-            } catch {
-              // Non-JSON line, send as raw text
-              broadcast('claude:stream', { type: 'text', content: line })
-            }
-          }
-        })
-
-        claudeProcess.stderr?.on('data', (data: Buffer) => {
-          const text = data.toString()
-          logger.warn('system', 'Claude stderr', { text })
-          broadcast('claude:stream', { type: 'error', error: text })
-        })
-
-        claudeProcess.on('close', (code) => {
-          logger.info('system', 'Claude process exited', { code })
-          broadcast('claude:stream', { type: 'done', code })
-          claudeProcess = null
-        })
-
-        claudeProcess.on('error', (err) => {
-          logger.error('system', 'Claude process error', { error: err.message })
-          broadcast('claude:stream', { type: 'error', error: `Failed to spawn claude: ${err.message}` })
-          claudeProcess = null
-        })
-
-        return { success: true }
-      } else {
-        // Process already running, write to stdin
-        claudeProcess.stdin?.write(message + '\n')
-        return { success: true }
-      }
+      return { success: true }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       logger.error('system', 'Claude send error', { error })

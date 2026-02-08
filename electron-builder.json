@@ -1,0 +1,22 @@
+{
+  "appId": "com.nexus.app",
+  "productName": "Nexus",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*"
+  ],
+  "mac": {
+    "target": "dmg",
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
+  "win": {
+    "target": "nsis"
+  },
+  "linux": {
+    "target": "AppImage"
+  },
+  "extraResources": []
+}
